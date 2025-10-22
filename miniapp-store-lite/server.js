@@ -10,6 +10,7 @@ import axios from 'axios';
 import Database from 'better-sqlite3';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -19,7 +20,10 @@ const DB_PATH = process.env.DATABASE_URL || './data/store.db';
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const ADMIN_IDS = (process.env.ADMIN_TELEGRAM_IDS || '').split(',').map(s=>s.trim()).filter(Boolean);
 
-// --- AUTO MIGRATION (создание таблиц, если их нет)
+fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+const db = new Database(DB_PATH);
+db.pragma('journal_mode = WAL');
+
 function ensureSchema() {
   db.exec(`
   PRAGMA journal_mode=WAL;
@@ -62,14 +66,10 @@ function ensureSchema() {
     delivered_key TEXT,
     FOREIGN KEY(user_id) REFERENCES users(id),
     FOREIGN KEY(product_id) REFERENCES products(id)
-  );`);
+  );
+  `);
   console.log('SQLite schema ensured at', DB_PATH);
 }
-
-
-fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-const db = new Database(DB_PATH);
-db.pragma('journal_mode = WAL');
 
 function verifyTelegramInitData(initData) {
   if (!initData || !BOT_TOKEN) return false;
@@ -102,10 +102,6 @@ app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 function auth(req,res,next){
-  if (process.env.NODE_ENV !== 'production' && req.query.devUser) {
-    req.user = { id: String(req.query.devUser), username: 'dev' };
-    return next();
-  }
   const initData = req.header('x-telegram-init-data') || req.query.initData;
   if (!initData) return res.status(401).json({ error:'Missing initData'});
   const ok = verifyTelegramInitData(initData);
@@ -144,6 +140,7 @@ app.post('/api/products/:id/keys', auth, adminOnly, (req,res)=>{
   tx(keys);
   res.json({ added: keys.length });
 });
+
 app.post('/api/checkout', auth, async (req,res)=>{
   try{
     const { productId, provider } = req.body;
@@ -156,11 +153,7 @@ app.post('/api/checkout', auth, async (req,res)=>{
     let redirectUrl = `${APP_URL}/order.html?id=${orderId}`;
     if (provider === 'yookassa' && process.env.YOOKASSA_SHOP_ID && process.env.YOOKASSA_SECRET_KEY) redirectUrl = `${APP_URL}/pay/yookassa.html?order=${orderId}`;
     else if (provider === 'nowpayments' && process.env.NOWPAYMENTS_API_KEY) redirectUrl = `${APP_URL}/pay/nowpayments.html?order=${orderId}`;
-    else if (process.env.NODE_ENV !== 'production') {
-      db.prepare(`UPDATE orders SET status='paid', paid_at=CURRENT_TIMESTAMP WHERE id=?`).run(orderId);
-      await deliverKey(orderId);
-      redirectUrl = `${APP_URL}/order.html?id=${orderId}&paid=1`;
-    }
+    else { db.prepare(`UPDATE orders SET status='paid', paid_at=CURRENT_TIMESTAMP WHERE id=?`).run(orderId); await deliverKey(orderId); redirectUrl = `${APP_URL}/order.html?id=${orderId}&paid=1`; }
     res.json({ orderId, redirectUrl });
   }catch(e){ console.error(e); res.status(500).json({ error:String(e.message||e) }); }
 });
@@ -169,14 +162,12 @@ app.get('/api/my/orders', auth, (req,res)=>{
   const rows = db.prepare(`SELECT * FROM orders WHERE user_id=? ORDER BY id DESC`).all(u.id);
   res.json({ items: rows });
 });
+
 app.post('/api/webhooks/yookassa', express.json(), async (req,res)=>{
   try{
     const ev = req.body;
     const orderId = Number(ev?.object?.metadata?.orderId || ev?.object?.metadata?.order_id);
-    if (ev?.event === 'payment.succeeded' && orderId) {
-      db.prepare(`UPDATE orders SET status='paid', paid_at=CURRENT_TIMESTAMP WHERE id=?`).run(orderId);
-      await deliverKey(orderId);
-    }
+    if (ev?.event === 'payment.succeeded' && orderId) { db.prepare(`UPDATE orders SET status='paid', paid_at=CURRENT_TIMESTAMP WHERE id=?`).run(orderId); await deliverKey(orderId); }
   }catch(e){ console.error(e); }
   res.json({ ok:true });
 });
@@ -184,26 +175,39 @@ app.post('/api/webhooks/nowpayments', express.json(), async (req,res)=>{
   try{
     const ev = req.body;
     const orderId = Number(ev?.order_id || ev?.orderId);
-    if (ev?.payment_status === 'finished' && orderId) {
-      db.prepare(`UPDATE orders SET status='paid', paid_at=CURRENT_TIMESTAMP WHERE id=?`).run(orderId);
-      await deliverKey(orderId);
-    }
+    if (ev?.payment_status === 'finished' && orderId) { db.prepare(`UPDATE orders SET status='paid', paid_at=CURRENT_TIMESTAMP WHERE id=?`).run(orderId); await deliverKey(orderId); }
   }catch(e){ console.error(e); }
   res.json({ ok:true });
 });
+
 app.post('/api/telegram/webhook', express.json(), async (req,res)=>{
   try{
     const message = req.body?.message;
-    if (message?.text === '/start' && BOT_TOKEN) {
-      await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-        chat_id: message.from.id,
+    if (!message || !BOT_TOKEN) return res.json({ ok:true });
+    const fromId = String(message.from.id);
+    const text = message.text || '';
+    const api = `https://api.telegram.org/bot${BOT_TOKEN}`;
+    if (text === '/start') {
+      await axios.post(`${api}/sendMessage`, {
+        chat_id: fromId,
         text: 'Открыть магазин',
         reply_markup: { inline_keyboard: [[{ text: 'Открыть', web_app: { url: APP_URL } }]] }
       });
+    } else if (text === '/admin') {
+      if (!ADMIN_IDS.includes(fromId)) {
+        await axios.post(`${api}/sendMessage`, { chat_id: fromId, text: 'Доступ только для админов.' });
+      } else {
+        await axios.post(`${api}/sendMessage`, {
+          chat_id: fromId,
+          text: 'Админ панель',
+          reply_markup: { inline_keyboard: [[{ text: 'Открыть админку', web_app: { url: APP_URL + '/admin.html' } }]] }
+        });
+      }
     }
   }catch(e){ console.error(e); }
   res.json({ ok:true });
 });
+
 async function deliverKey(orderId){
   const o = db.prepare(`SELECT o.*, p.title, u.tg_id FROM orders o JOIN products p ON p.id=o.product_id JOIN users u ON u.id=o.user_id WHERE o.id=?`).get(orderId);
   if (!o || o.status !== 'paid') return;
@@ -212,8 +216,10 @@ async function deliverKey(orderId){
   if (!key) throw new Error('No stock');
   db.prepare(`UPDATE keys SET is_used=1, used_at=CURRENT_TIMESTAMP, order_id=? WHERE id=?`).run(o.id, key.id);
   db.prepare(`UPDATE orders SET delivered_key=? WHERE id=?`).run(key.code, o.id);
-  await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, { chat_id: o.tg_id, text: `Спасибо за покупку!\n\n*${o.title}*\nВаш ключ: \`${key.code}\``, parse_mode:'Markdown' });
+  await sendDM(o.tg_id, `Спасибо за покупку!\n\n*${o.title}*\nВаш ключ: \`${key.code}\``);
 }
+
 app.get('*', (req,res)=>{ res.sendFile(path.join(__dirname, 'public', 'index.html')); });
+
 ensureSchema();
 app.listen(PORT, ()=>console.log('LITE API on', PORT));
