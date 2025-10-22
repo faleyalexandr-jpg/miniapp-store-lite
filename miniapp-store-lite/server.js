@@ -215,4 +215,5 @@ async function deliverKey(orderId){
   await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, { chat_id: o.tg_id, text: `Спасибо за покупку!\n\n*${o.title}*\nВаш ключ: \`${key.code}\``, parse_mode:'Markdown' });
 }
 app.get('*', (req,res)=>{ res.sendFile(path.join(__dirname, 'public', 'index.html')); });
+ensureSchema();
 app.listen(PORT, ()=>console.log('LITE API on', PORT));
