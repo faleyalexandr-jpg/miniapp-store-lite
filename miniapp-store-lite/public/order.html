@@ -1,126 +1,90 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Статус заказа</title>
-  <style>
-    :root{
-      --bg: var(--tg-theme-bg-color, #ffffff);
-      --text: var(--tg-theme-text-color, #111111);
-      --muted: var(--tg-theme-hint-color, #666666);
-      --border: var(--tg-theme-secondary-bg-color, #eaeaea);
-      --ok: #1aa27a;
-      --warn: #e6a700;
-      --info: #2b7bd8;
-    }
-    body{font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); margin:0; padding:16px;}
-    .card{border:1px solid var(--border); border-radius:14px; padding:14px; background:var(--tg-theme-secondary-bg-color, #fff);}
-    .row{display:flex; gap:12px; align-items:center}
-    .thumb{width:90px; height:66px; border-radius:8px; background:#f6f6f6; object-fit:cover}
-    .status{padding:6px 10px; border-radius:999px; font-size:13px; display:inline-flex; align-items:center; gap:6px}
-    .pending{background:rgba(43,123,216,.1); color:var(--info)}
-    .paid{background:rgba(26,162,122,.1); color:var(--ok)}
-    .delivered{background:rgba(26,162,122,.1); color:var(--ok)}
-    .small{color:var(--muted); font-size:13px}
-    .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;}
-    .hint{margin-top:10px; padding:10px; background:rgba(0,0,0,.03); border-radius:10px; color:var(--muted); font-size:14px}
-    .cta{margin-top:14px}
-    .btn{display:inline-block; padding:10px 14px; border-radius:10px; text-decoration:none; color:#fff; background:var(--tg-theme-button-color,#0088cc)}
-    .btn:hover{opacity:.9}
-  </style>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BuddaPlay — Заказ</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+body{font-family:system-ui,sans-serif;background:#f8f9fb;margin:0;padding:20px;}
+.card{
+  background:#fff;
+  border-radius:14px;
+  padding:20px;
+  max-width:420px;
+  margin:20px auto;
+  box-shadow:0 2px 5px rgba(0,0,0,.05);
+}
+h2{text-align:center;}
+.status{
+  text-align:center;
+  padding:8px 12px;
+  border-radius:999px;
+  font-weight:600;
+  width:fit-content;
+  margin:0 auto 10px;
+}
+.status.pending{background:#fff3cd;color:#856404;}
+.status.paid{background:#d4edda;color:#155724;}
+img{width:100%;border-radius:10px;margin-bottom:10px;}
+.details{font-size:15px;line-height:1.5;}
+.keybox{margin-top:10px;padding:10px;border:1px dashed #999;border-radius:10px;text-align:center;}
+button{
+  display:block;
+  width:100%;
+  padding:12px;
+  background:#0088cc;
+  color:#fff;
+  border:none;
+  border-radius:10px;
+  font-size:16px;
+  cursor:pointer;
+}
+</style>
 </head>
 <body>
+<div class="card" id="card">
   <h2>Статус заказа</h2>
-  <div id="box" class="card">
-    <div id="header" class="row">
-      <img id="img" class="thumb" src="https://placehold.co/180x120">
-      <div>
-        <div id="title" style="font-weight:600; line-height:1.2;">Загрузка...</div>
-        <div id="price" class="small"></div>
-      </div>
-    </div>
-
-    <div style="margin-top:12px;">
-      <span id="badge" class="status pending">Ожидаем статус оплаты…</span>
-    </div>
-
-    <div id="keymask" class="mono small" style="margin-top:12px; display:none;"></div>
-
-    <div id="hint" class="hint" style="margin-top:12px;">
-      Если вы уже оплатили — задержка обновления может составлять до 30–60 секунд. Страница обновится автоматически.
-    </div>
-
-    <div class="cta">
-      <a id="openBot" class="btn" href="#" target="_blank">Открыть чат с ботом</a>
-    </div>
-  </div>
+  <div id="status" class="status">Загрузка...</div>
+  <div id="content"></div>
+</div>
 
 <script>
-function initData(){ try { return window.Telegram?.WebApp?.initData || ''; } catch { return ''; } }
-function fmt(a,c){ try { return new Intl.NumberFormat(undefined,{style:'currency',currency:c}).format(a/100) } catch { return (a/100)+' '+c } }
+const tg=window.Telegram?.WebApp;
+tg?.ready();
 
-const q = new URL(location.href).searchParams;
-const orderId = q.get('id');
-const botUsernameGuess = ''; // можно оставить пустым — ссылка на бота не обязательна
+const params=new URLSearchParams(location.search);
+const id=params.get('id');
+if(!id){document.getElementById('content').innerHTML='<p>Не указан ID заказа.</p>';throw new Error();}
 
-if (!orderId) {
-  document.getElementById('title').textContent = 'Не указан ID заказа';
-} else {
-  // если знаем юзернейм бота — покажем кнопку перехода
-  const openBot = document.getElementById('openBot');
-  if (botUsernameGuess) openBot.href = 'https://t.me/' + botUsernameGuess;
-  else openBot.style.display = 'none';
-
-  poll();
-  const timer = setInterval(poll, 2000);
-
-  async function poll(){
-    try{
-      const r = await fetch('/api/orders/' + orderId, { headers: { 'x-telegram-init-data': initData() }});
-      if (!r.ok) throw new Error('HTTP '+r.status);
-      const j = await r.json();
-
-      // Шапка
-      document.getElementById('title').textContent = j.product?.title || ('Заказ #' + j.id);
-      if (j.product?.image_url) document.getElementById('img').src = j.product.image_url;
-      document.getElementById('price').textContent = fmt(j.amount, j.currency);
-
-      // Бейдж статуса
-      const badge = document.getElementById('badge');
-      if (j.status === 'pending') {
-        badge.className = 'status pending';
-        badge.textContent = 'Ожидаем оплату…';
-        document.getElementById('hint').textContent = 'Завершите оплату в выбранном провайдере. Эта страница обновится автоматически.';
-      } else if (j.status === 'paid') {
-        badge.className = 'status paid';
-        badge.textContent = 'Оплата принята';
-        document.getElementById('hint').textContent = 'Мы обрабатываем заказ и отправим ключ в личные сообщения от бота.';
-      } else {
-        badge.className = 'status delivered';
-        badge.textContent = 'Ключ отправлен в бот';
-        document.getElementById('hint').textContent = 'Откройте чат с ботом — ключ уже в сообщениях.';
-      }
-
-      // Маска ключа (если уже выдан)
-      const keymask = document.getElementById('keymask');
-      if (j.delivered_key_mask) {
-        keymask.style.display = '';
-        keymask.textContent = 'Код (маска): ' + j.delivered_key_mask;
-        clearInterval(timer);
-      }
-
-    } catch(e) {
-      // мягкая ошибка (например, 401, если открыли не из Telegram)
-      document.getElementById('title').textContent = 'Не удалось загрузить заказ';
-      document.getElementById('price').textContent = '';
-      document.getElementById('badge').textContent = 'Ошибка загрузки…';
-      console.error(e);
-      clearInterval(timer);
-    }
+async function loadOrder(){
+  try{
+    const r=await fetch('/api/orders/'+id,{headers:{'x-telegram-init-data':tg?.initData||''}});
+    const j=await r.json();
+    if(!r.ok) throw new Error(j.error||r.statusText);
+    render(j);
+  }catch(e){
+    document.getElementById('content').innerHTML='<p style="color:red">'+e.message+'</p>';
   }
 }
+function render(o){
+  const s=document.getElementById('status');
+  s.textContent=o.status==='paid'?'Оплачено':'Ожидает оплату';
+  s.className='status '+o.status;
+  document.getElementById('content').innerHTML=`
+    <img src="${o.product.image_url||'https://placehold.co/300x200'}" alt="">
+    <div class="details">
+      <b>${o.product.title}</b><br>
+      Сумма: ${(o.amount/100).toFixed(2)} ${o.currency}<br>
+      Создан: ${o.created_at}<br>
+      ${o.paid_at ? 'Оплачен: '+o.paid_at+'<br>':''}
+    </div>
+    ${o.delivered_key_mask ? '<div class="keybox">Ваш ключ: <b>'+o.delivered_key_mask+'</b></div>' : ''}
+    <button onclick="tg.close()">Закрыть</button>
+  `;
+}
+
+loadOrder();
 </script>
 </body>
 </html>
