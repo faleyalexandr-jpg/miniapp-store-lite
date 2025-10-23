@@ -141,6 +141,42 @@ app.post('/api/products/:id/keys', auth, adminOnly, (req,res)=>{
   res.json({ added: keys.length });
 });
 
+// Список товаров для админки с остатками ключей
+app.get('/api/admin/products', auth, adminOnly, (req, res) => {
+  const q = (req.query.search || '').toString().trim().toLowerCase();
+  const limit = parseInt(req.query.limit || '100', 10);
+  const offset = parseInt(req.query.offset || '0', 10);
+
+  const base = `
+    SELECT
+      p.*,
+      COALESCE((
+        SELECT COUNT(1) FROM keys k
+        WHERE k.product_id = p.id AND k.is_used = 0
+      ), 0) AS stock_remaining
+    FROM products p
+  `;
+
+  let rows;
+  if (q) {
+    rows = db.prepare(
+      base + ` WHERE lower(p.title) LIKE ? OR lower(p.sku) LIKE ?
+               ORDER BY p.id DESC LIMIT ? OFFSET ?`
+    ).all(`%${q}%`, `%${q}%`, limit, offset);
+  } else {
+    rows = db.prepare(
+      base + ` ORDER BY p.id DESC LIMIT ? OFFSET ?`
+    ).all(limit, offset);
+  }
+
+  // поможем фронту — сразу отметим "низкий остаток"
+  const LOW_THRESHOLD = 5;
+  rows.forEach(r => { r.low_stock = r.stock_remaining <= LOW_THRESHOLD; });
+
+  res.json({ items: rows, count: rows.length });
+});
+
+
 app.post('/api/checkout', auth, async (req,res)=>{
   try{
     const { productId, provider } = req.body;
