@@ -163,6 +163,46 @@ app.get('/api/my/orders', auth, (req,res)=>{
   res.json({ items: rows });
 });
 
+// Получение заказа по id (только владелец)
+app.get('/api/orders/:id', auth, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const u = db.prepare(`SELECT * FROM users WHERE tg_id=?`).get(req.user.id);
+  if (!u) return res.status(401).json({ error: 'No user' });
+
+  const row = db.prepare(`
+    SELECT o.*, p.title AS product_title, p.image_url AS product_image
+    FROM orders o
+    JOIN products p ON p.id = o.product_id
+    WHERE o.id = ? AND o.user_id = ?
+  `).get(id, u.id);
+
+  if (!row) return res.status(404).json({ error: 'Order not found' });
+
+  // НИКОГДА не отдаём полный ключ в открытую страницу
+  let delivered_key_mask = null;
+  if (row.delivered_key) {
+    const k = String(row.delivered_key);
+    delivered_key_mask = k.length > 6 ? `${k.slice(0, 3)}****${k.slice(-3)}` : '***';
+  }
+
+  res.json({
+    id: row.id,
+    status: row.status,
+    amount: row.amount,
+    currency: row.currency,
+    provider: row.provider,
+    created_at: row.created_at,
+    paid_at: row.paid_at,
+    product: {
+      id: row.product_id,
+      title: row.product_title,
+      image_url: row.product_image
+    },
+    // маска вместо полного ключа: полный ключ уходит только в DM от бота
+    delivered_key_mask
+  });
+});
+
 app.post('/api/webhooks/yookassa', express.json(), async (req,res)=>{
   try{
     const ev = req.body;
