@@ -6,12 +6,12 @@
   <title>Админка — MiniApp LITE</title>
   <style>
     body{font-family:system-ui,sans-serif;margin:0;padding:16px}
-    fieldset{border:1px solid #ddd;border-radius:12px;padding:12px;margin-bottom:16px}
+    fieldset{border:1px solid #ddd;border-radius:12px;padding:12px;margin-bottom:16px;background:#fff}
     label{display:block;margin:6px 0 4px}
     input,textarea,select,button{padding:8px;width:100%;box-sizing:border-box}
     .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
-    table{width:100%;border-collapse:collapse;margin-top:8px}
+    table{width:100%;border-collapse:collapse;margin-top:8px;background:#fff}
     th,td{border:1px solid #eee;padding:8px;text-align:left}
     th{background:#fafafa}
     .ok{color:#0a7}
@@ -32,6 +32,10 @@
     .stock-ok{ background:rgba(26,162,122,.12); color:#1aa27a; }
     .stock-low{ background:rgba(230,167,0,.12); color:#b8860b; }
     .stock-out{ background:rgba(200,0,0,.12); color:#b00020; }
+
+    @media (max-width: 720px){
+      .row, .row3{grid-template-columns:1fr}
+    }
   </style>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
@@ -46,7 +50,7 @@
     <div class="row3">
       <div>
         <label>Название</label>
-        <input id="title" placeholder="Forza Horizon 5" oninput="autoSku()">
+        <input id="title" placeholder="Forza Horizon 5" oninput="autoSku(); updatePreview();">
       </div>
       <div>
         <label>SKU</label>
@@ -62,17 +66,17 @@
     </div>
 
     <label>Описание</label>
-    <textarea id="description" rows="3" placeholder="Ключ для XBOX, регион Global"></textarea>
+    <textarea id="description" rows="3" placeholder="Ключ для XBOX, регион Global" oninput="updatePreview()"></textarea>
 
     <div class="row3">
       <div>
         <label>Цена (в валюте, например 19.99)</label>
-        <input id="priceHuman" type="number" step="0.01" placeholder="19.99" value="">
+        <input id="priceHuman" type="number" step="0.01" placeholder="19.99" value="" oninput="updatePreview()">
         <div class="muted" id="minorHint"></div>
       </div>
       <div>
         <label>Валюта</label>
-        <select id="currency">
+        <select id="currency" onchange="updatePreview()">
           <option>RUB</option><option>USD</option><option>EUR</option><option>UAH</option><option>KZT</option>
         </select>
       </div>
@@ -103,7 +107,7 @@
 
     <h4 style="margin-top:16px">Превью карточки</h4>
     <div class="card" id="preview">
-      <img class="img" id="pimg" src="https://placehold.co/400x300">
+      <img class="img" id="pimg" src="https://placehold.co/400x300" alt="">
       <div style="font-weight:600; margin-top:8px" id="ptitle">Название товара</div>
       <div class="muted" id="pdesc" style="min-height:32px">Короткое описание</div>
       <div class="rowflex" style="margin-top:8px">
@@ -111,6 +115,24 @@
         <button disabled>Купить</button>
       </div>
     </div>
+  </fieldset>
+
+  <!-- Загрузка ключей -->
+  <fieldset id="keys-uploader">
+    <legend>Загрузка ключей к товару</legend>
+    <div class="row">
+      <div>
+        <label>ID товара</label>
+        <input id="pid" type="number" placeholder="Например, 1">
+      </div>
+      <div>
+        <label>Ключи (по одному в строке)</label>
+        <textarea id="keys" rows="6" placeholder="AAAAA-BBBBB-CCCCC
+DDDDD-EEEEE-FFFFF"></textarea>
+      </div>
+    </div>
+    <button id="btnKeys">Загрузить ключи</button>
+    <div id="keysMsg"></div>
   </fieldset>
 
   <!-- Дублирование -->
@@ -181,7 +203,7 @@ function genSku(){
 }
 function autoSku(){
   const sku = document.getElementById('sku').value.trim();
-  if (sku) return; // не трогаем, если пользователь уже заполнил
+  if (sku) return; // если уже ввели — не трогаем
   const t = (document.getElementById('title').value || '').trim().toUpperCase().replace(/[^A-Z0-9]+/g,'-').replace(/^-+|-+$/g,'');
   if (t) document.getElementById('sku').value = 'XBOX-' + t + '-' + Date.now().toString().slice(-3);
 }
@@ -220,11 +242,33 @@ document.getElementById('btnCreate').onclick = async ()=>{
     });
     msg.textContent = 'OK: создан id=' + res.id;
     msg.className = 'ok';
-
-    // очистка формы частично
-    // document.getElementById('title').value = '';
-    // document.getElementById('sku').value = '';
+    // подставим id созданного товара в форму загрузки ключей
+    document.getElementById('pid').value = res.id;
   }catch(e){
+    msg.textContent = 'Ошибка: ' + e.message;
+    msg.className = 'err';
+  }
+};
+
+// Загрузка ключей
+document.getElementById('btnKeys').onclick = async ()=>{
+  const pid = Number(document.getElementById('pid').value);
+  const keysText = document.getElementById('keys').value || '';
+  const keys = keysText.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  const msg = document.getElementById('keysMsg');
+  msg.textContent = '...'; msg.className = '';
+
+  try {
+    if (!pid) throw new Error('Введите ID товара');
+    if (!keys.length) throw new Error('Вставьте хотя бы один ключ');
+
+    const res = await api('POST', '/api/products/' + pid + '/keys', { keys });
+    msg.textContent = 'OK: добавлено ключей — ' + res.added;
+    msg.className = 'ok';
+
+    document.getElementById('keys').value = '';
+    if (typeof loadProducts === 'function') loadProducts();
+  } catch(e){
     msg.textContent = 'Ошибка: ' + e.message;
     msg.className = 'err';
   }
@@ -260,7 +304,7 @@ document.getElementById('btnImport').onclick = async ()=>{
       const [sku, title, description, priceMajor, currency, image_url, is_active = '1', category = '', tags = ''] = parts;
       return {
         sku, title, description,
-        price: toMinor(priceMajor),
+        price: Math.round((Number(priceMajor)||0)*100),
         currency: (currency||'USD').toUpperCase(),
         image_url: image_url||'',
         is_active: is_active === '1',
@@ -271,7 +315,7 @@ document.getElementById('btnImport').onclick = async ()=>{
     await api('POST','/api/admin/products/bulk', { items });
     msg.textContent = 'OK: импортировано позиций — ' + items.length;
     msg.className = 'ok';
-    loadProducts(); // обновим таблицу
+    loadProducts();
   }catch(e){
     msg.textContent = 'Ошибка: ' + e.message;
     msg.className = 'err';
