@@ -1,1 +1,177 @@
-<!doctype html><html lang='ru'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Магазин XBOX ключей — LITE</title><style>body{font-family:system-ui,sans-serif;margin:0;padding:16px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}.card{border:1px solid #eee;border-radius:12px;padding:12px}.img{width:100%;border-radius:8px;background:#f6f6f6;aspect-ratio:4/3;object-fit:cover}.row{display:flex;justify-content:space-between;align-items:center}input,button,select{padding:8px}</style><script src='https://telegram.org/js/telegram-web-app.js'></script></head><body><h2>Магазин XBOX ключей — LITE</h2><div class='row' style='gap:12px;flex-wrap:wrap'><input id='q' placeholder='Поиск...' style='flex:1;min-width:220px'><select id='provider'><option value='test'>Тест (dev)</option><option value='yookassa'>YooKassa</option><option value='nowpayments'>NOWPayments</option></select></div><div id='list' class='grid' style='margin-top:12px'></div><h3 style='margin-top:24px'>Мои заказы</h3><ul id='orders'></ul><script>const API='';function initData(){try{return window.Telegram?.WebApp?.initData||''}catch{return ''}}function fmt(a,c){try{return new Intl.NumberFormat(undefined,{style:'currency',currency:c}).format(a/100)}catch{return (a/100)+' '+c}}async function loadProducts(q=''){const u=new URL('/api/products', location.origin); if(q)u.searchParams.set('search', q); const r=await fetch(u,{headers:{'x-telegram-init-data':initData()}}); return r.json()}async function loadOrders(){const r=await fetch('/api/my/orders',{headers:{'x-telegram-init-data':initData()}}); return r.json()}async function buy(id){const provider=document.getElementById('provider').value; const r=await fetch('/api/checkout',{method:'POST',headers:{'Content-Type':'application/json','x-telegram-init-data':initData()},body:JSON.stringify({productId:id,provider})}); const j=await r.json(); if(j.redirectUrl) location.href=j.redirectUrl;}async function render(){const q=document.getElementById('q').value.trim(); const data=await loadProducts(q); const list=document.getElementById('list'); list.innerHTML=''; data.items.forEach(p=>{const d=document.createElement('div'); d.className='card'; d.innerHTML=`<img class='img' src='${p.image_url||'https://placehold.co/400x300'}'><div style='font-weight:600;margin-top:8px'>${p.title}</div><div style='font-size:12;opacity:.8;min-height:32px'>${p.description||''}</div><div class='row' style='margin-top:8px'><div>${fmt(p.price,p.currency)}</div><button data-id='${p.id}'>Купить</button></div>`; d.querySelector('button').onclick=()=>buy(p.id); list.appendChild(d);}); try{const ord=await loadOrders(); const ul=document.getElementById('orders'); ul.innerHTML=''; (ord.items||[]).forEach(o=>{const li=document.createElement('li'); li.textContent=`#${o.id} — ${o.status}`+(o.delivered_key?` — ключ: ${o.delivered_key}`:''); ul.appendChild(li);});}catch{}}document.getElementById('q').addEventListener('input', ()=>render()); render();</script></body></html>
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Магазин XBOX ключей — LITE</title>
+  <style>
+    :root {
+      --bg: var(--tg-theme-bg-color, #ffffff);
+      --text: var(--tg-theme-text-color, #111111);
+      --muted: var(--tg-theme-hint-color, #555555);
+      --border: var(--tg-theme-secondary-bg-color, #eaeaea);
+    }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 16px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      background: var(--tg-theme-secondary-bg-color, #fff);
+      color: var(--text);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+
+    .img {
+      width: 100%;
+      border-radius: 8px;
+      background: #f6f6f6;
+      aspect-ratio: 4/3;
+      object-fit: cover;
+    }
+
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    input, button, select {
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 15px;
+    }
+
+    button {
+      cursor: pointer;
+      background: var(--tg-theme-button-color, #0088cc);
+      color: var(--tg-theme-button-text-color, #fff);
+      border: none;
+    }
+
+    button:hover {
+      opacity: 0.9;
+    }
+
+    @media (max-width: 420px) {
+      body { padding: 12px; }
+      .card { padding: 12px; }
+      input, button, select { font-size: 16px; } /* удобнее тач-клава */
+    }
+  </style>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <h2>Магазин XBOX ключей — LITE</h2>
+
+  <div class="row" style="gap:12px; flex-wrap:wrap">
+    <input id="q" placeholder="Поиск..." style="flex:1; min-width:220px">
+    <select id="provider">
+      <option value="test">Тест (dev)</option>
+      <option value="yookassa">YooKassa</option>
+      <option value="nowpayments">NOWPayments</option>
+    </select>
+  </div>
+
+  <div id="list" class="grid" style="margin-top:12px"></div>
+
+  <h3 style="margin-top:24px">Мои заказы</h3>
+  <ul id="orders"></ul>
+
+  <script>
+    const API = '';
+
+    function initData() {
+      try { return window.Telegram?.WebApp?.initData || ''; } 
+      catch { return ''; }
+    }
+
+    function fmt(a, c) {
+      try {
+        return new Intl.NumberFormat(undefined, {style:'currency', currency:c}).format(a/100);
+      } catch {
+        return (a/100) + ' ' + c;
+      }
+    }
+
+    async function loadProducts(q='') {
+      const u = new URL('/api/products', location.origin);
+      if (q) u.searchParams.set('search', q);
+      const r = await fetch(u, { headers: {'x-telegram-init-data': initData()} });
+      return r.json();
+    }
+
+    async function loadOrders() {
+      const r = await fetch('/api/my/orders', { headers: {'x-telegram-init-data': initData()} });
+      return r.json();
+    }
+
+    async function buy(id) {
+      const provider = document.getElementById('provider').value;
+      const r = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json','x-telegram-init-data':initData()},
+        body: JSON.stringify({ productId:id, provider })
+      });
+      const j = await r.json();
+      if (j.redirectUrl) location.href = j.redirectUrl;
+    }
+
+    async function render() {
+      const q = document.getElementById('q').value.trim();
+      const data = await loadProducts(q);
+      const list = document.getElementById('list');
+      list.innerHTML = '';
+
+      data.items.forEach(p => {
+        const d = document.createElement('div');
+        d.className = 'card';
+        d.innerHTML = `
+          <img class="img" src="${p.image_url || 'https://placehold.co/400x300'}">
+          <div style="font-weight:600; margin-top:8px; line-height:1.25; color: var(--tg-theme-text-color, #111);">
+            ${p.title}
+          </div>
+          <div style="font-size:13px; line-height:1.4; opacity:.9; min-height:32px; 
+                      overflow-wrap:anywhere; word-break:break-word; 
+                      color: var(--tg-theme-hint-color, #555); margin-top:2px;">
+            ${p.description || ''}
+          </div>
+          <div class="row" style="margin-top:8px">
+            <div>${fmt(p.price, p.currency)}</div>
+            <button data-id="${p.id}">Купить</button>
+          </div>`;
+        d.querySelector('button').onclick = () => buy(p.id);
+        list.appendChild(d);
+      });
+
+      try {
+        const ord = await loadOrders();
+        const ul = document.getElementById('orders');
+        ul.innerHTML = '';
+        (ord.items || []).forEach(o => {
+          const li = document.createElement('li');
+          li.textContent = `#${o.id} — ${o.status}` + (o.delivered_key ? ` — ключ: ${o.delivered_key}` : '');
+          ul.appendChild(li);
+        });
+      } catch {}
+    }
+
+    document.getElementById('q').addEventListener('input', () => render());
+    render();
+  </script>
+</body>
+</html>
