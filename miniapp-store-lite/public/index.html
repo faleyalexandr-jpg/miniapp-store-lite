@@ -8,8 +8,11 @@
     :root {
       --bg: var(--tg-theme-bg-color, #ffffff);
       --text: var(--tg-theme-text-color, #111111);
-      --muted: var(--tg-theme-hint-color, #555555);
+      --muted: var(--tg-theme-hint-color, #666666);
       --border: var(--tg-theme-secondary-bg-color, #eaeaea);
+      --btn-bg: var(--tg-theme-button-color, #0088cc);
+      --btn-text: var(--tg-theme-button-text-color, #ffffff);
+      --btn-bg-hover: color-mix(in srgb, var(--btn-bg) 80%, white);
     }
 
     body {
@@ -28,16 +31,22 @@
 
     .card {
       border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 12px;
+      border-radius: 16px;
+      padding: 14px;
       background: var(--tg-theme-secondary-bg-color, #fff);
       color: var(--text);
-      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.06);
+      transition: transform .1s ease, box-shadow .2s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.08);
     }
 
     .img {
       width: 100%;
-      border-radius: 8px;
+      border-radius: 10px;
       background: #f6f6f6;
       aspect-ratio: 4/3;
       object-fit: cover;
@@ -49,7 +58,7 @@
       align-items: center;
     }
 
-    input, button, select {
+    input, select {
       padding: 8px;
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -58,19 +67,32 @@
 
     button {
       cursor: pointer;
-      background: var(--tg-theme-button-color, #0088cc);
-      color: var(--tg-theme-button-text-color, #fff);
       border: none;
+      border-radius: 10px;
+      padding: 10px 16px;
+      background: var(--btn-bg);
+      color: var(--btn-text);
+      font-weight: 600;
+      font-size: 15px;
+      transition: all .2s ease;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.15);
     }
 
     button:hover {
-      opacity: 0.9;
+      background: var(--btn-bg-hover);
+      transform: translateY(-1px);
+      box-shadow: 0 3px 6px rgba(0,0,0,0.2);
+    }
+
+    button:active {
+      transform: translateY(1px);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.2) inset;
     }
 
     @media (max-width: 420px) {
       body { padding: 12px; }
       .card { padding: 12px; }
-      input, button, select { font-size: 16px; } /* удобнее тач-клава */
+      input, button, select { font-size: 16px; }
     }
   </style>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -147,11 +169,11 @@
           </div>
           <div style="font-size:13px; line-height:1.4; opacity:.9; min-height:32px; 
                       overflow-wrap:anywhere; word-break:break-word; 
-                      color: var(--tg-theme-hint-color, #555); margin-top:2px;">
+                      color: var(--muted); margin-top:2px;">
             ${p.description || ''}
           </div>
-          <div class="row" style="margin-top:8px">
-            <div>${fmt(p.price, p.currency)}</div>
+          <div class="row" style="margin-top:10px">
+            <div style="font-weight:600;">${fmt(p.price, p.currency)}</div>
             <button data-id="${p.id}">Купить</button>
           </div>`;
         d.querySelector('button').onclick = () => buy(p.id);
