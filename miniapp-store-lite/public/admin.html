@@ -1,1 +1,166 @@
-<!doctype html><html lang='ru'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Админка — MiniApp LITE</title><style>body{font-family:system-ui,sans-serif;margin:0;padding:16px}fieldset{border:1px solid #ddd;border-radius:12px;padding:12px;margin-bottom:16px}label{display:block;margin:6px 0 4px}input,textarea,select,button{padding:8px;width:100%;box-sizing:border-box}.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border:1px solid #eee;padding:8px;text-align:left}th{background:#fafafa}.ok{color:#0a7}.err{color:#c00}</style><script src='https://telegram.org/js/telegram-web-app.js'></script></head><body><h2>Админ-панель</h2><p>Откройте через команду <b>/admin</b> в чате с ботом, иначе будет 401/403.</p><fieldset><legend>Создать товар</legend><div class='row'><div><label>SKU</label><input id='sku' placeholder='XBOX-GAME-001'></div><div><label>Цена (minor units)</label><input id='price' type='number' placeholder='1999'></div><div><label>Валюта</label><input id='currency' placeholder='USD' value='USD'></div><div><label>Заголовок</label><input id='title' placeholder='Forza Horizon 5'></div></div><label>Описание</label><textarea id='description' rows='3' placeholder='Ключ для XBOX'></textarea><label>URL картинки</label><input id='image_url' placeholder='https://...'><button id='btnCreate'>Создать товар</button><div id='createMsg'></div></fieldset><fieldset><legend>Загрузка ключей</legend><div class='row'><div><label>ID товара</label><input id='pid' type='number' placeholder='1'></div><div><label>Ключи (по одному в строке)</label><textarea id='keys' rows='6' placeholder='AAAAA-BBBBB-CCCCC\nDDDDD-EEEEE-FFFFF'></textarea></div></div><button id='btnKeys'>Загрузить ключи</button><div id='keysMsg'></div></fieldset><fieldset><legend>Список товаров</legend><div class='row'><div><label>Поиск</label><input id='q' placeholder='Название или SKU'></div></div><button id='btnLoad'>Обновить список</button><table><thead><tr><th>ID</th><th>SKU</th><th>Название</th><th>Цена</th><th>Валюта</th></tr></thead><tbody id='tbl'></tbody></table></fieldset><script>function initData(){try{return window.Telegram?.WebApp?.initData||''}catch{return ''}}function headers(){return{'Content-Type':'application/json','x-telegram-init-data':initData()}}async function api(method,url,body){const r=await fetch(url,{method,headers:headers(),body:body?JSON.stringify(body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.statusText||'Request failed');return j}document.getElementById('btnCreate').onclick=async()=>{const payload={sku:sku.value.trim(),title:title.value.trim(),description:description.value.trim(),price:Number(price.value),currency:currency.value.trim().toUpperCase()||'USD',image_url:image_url.value.trim(),is_active:true};const msg=document.getElementById('createMsg');msg.textContent='...';msg.className='';try{const res=await api('POST','/api/products',payload);msg.textContent='OK: создан продукт id='+res.id;msg.className='ok';document.getElementById('pid').value=res.id;}catch(e){msg.textContent='Ошибка: '+e.message;msg.className='err';}};document.getElementById('btnKeys').onclick=async()=>{const pid=Number(document.getElementById('pid').value);const keysText=document.getElementById('keys').value;const keys=keysText.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);const msg=document.getElementById('keysMsg');msg.textContent='...';msg.className='';try{const res=await api('POST','/api/products/'+pid+'/keys',{keys});msg.textContent='OK: добавлено ключей — '+res.added;msg.className='ok';}catch(e){msg.textContent='Ошибка: '+e.message;msg.className='err';}};document.getElementById('btnLoad').onclick=async()=>{const q=document.getElementById('q').value.trim();const url=new URL('/api/products',location.origin);if(q)url.searchParams.set('search',q);const tbody=document.getElementById('tbl');tbody.innerHTML='<tr><td colspan="5">Загрузка...</td></tr>';try{const res=await fetch(url,{headers:{'x-telegram-init-data':initData()}});const j=await res.json();tbody.innerHTML='';(j.items||[]).forEach(p=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${p.id}</td><td>${p.sku}</td><td>${p.title}</td><td>${p.price}</td><td>${p.currency}</td>`;tbody.appendChild(tr);});}catch(e){tbody.innerHTML='<tr><td colspan="5" class="err">Ошибка: '+e.message+'</td></tr>';}};</script></body></html>
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Админка — MiniApp LITE</title>
+  <style>
+    body{font-family:system-ui,sans-serif;margin:0;padding:16px}
+    fieldset{border:1px solid #ddd;border-radius:12px;padding:12px;margin-bottom:16px}
+    label{display:block;margin:6px 0 4px}
+    input,textarea,select,button{padding:8px;width:100%;box-sizing:border-box}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    table{width:100%;border-collapse:collapse;margin-top:8px}
+    th,td{border:1px solid #eee;padding:8px;text-align:left}
+    th{background:#fafafa}
+    .ok{color:#0a7}
+    .err{color:#c00}
+
+    /* Бейджи остатка */
+    .stock-badge{
+      display:inline-block; padding:4px 8px; border-radius:999px; font-size:12px; font-weight:600;
+    }
+    .stock-ok{ background:rgba(26,162,122,.12); color:#1aa27a; }     /* зелёный */
+    .stock-low{ background:rgba(230,167,0,.12); color:#b8860b; }     /* янтарный */
+    .stock-out{ background:rgba(200,0,0,.12); color:#b00020; }       /* красный */
+    .dim{opacity:.6}
+  </style>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <h2>Админ-панель</h2>
+  <p>Откройте через команду <b>/admin</b> в чате с ботом (иначе 401/403 из-за отсутствия initData).</p>
+
+  <fieldset>
+    <legend>Создать товар</legend>
+    <div class="row">
+      <div><label>SKU</label><input id="sku" placeholder="XBOX-GAME-001"></div>
+      <div><label>Цена (minor units)</label><input id="price" type="number" placeholder="1999"></div>
+      <div><label>Валюта</label><input id="currency" placeholder="USD" value="USD"></div>
+      <div><label>Заголовок</label><input id="title" placeholder="Forza Horizon 5"></div>
+    </div>
+    <label>Описание</label><textarea id="description" rows="3" placeholder="Ключ для XBOX"></textarea>
+    <label>URL картинки</label><input id="image_url" placeholder="https://...">
+    <button id="btnCreate">Создать товар</button>
+    <div id="createMsg"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Загрузка ключей к товару</legend>
+    <div class="row">
+      <div><label>ID товара</label><input id="pid" type="number" placeholder="Например, 1"></div>
+      <div><label>Ключи (по одному в строке)</label><textarea id="keys" rows="6" placeholder="AAAAA-BBBBB-CCCCC&#10;DDDDD-EEEEE-FFFFF"></textarea></div>
+    </div>
+    <button id="btnKeys">Загрузить ключи</button>
+    <div id="keysMsg"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Список товаров (поиск + остатки)</legend>
+    <div class="row">
+      <div><label>Поиск</label><input id="q" placeholder="Название или SKU"></div>
+      <div><label class="dim">Подсказка</label><div class="dim" style="padding-top:8px">Зелёный — ок, Янтарный — мало (&le;5), Красный — нет ключей</div></div>
+    </div>
+    <button id="btnLoad">Обновить список</button>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th><th>SKU</th><th>Название</th><th>Цена</th><th>Валюта</th><th>Остаток</th>
+        </tr>
+      </thead>
+      <tbody id="tbl"></tbody>
+    </table>
+  </fieldset>
+
+<script>
+function initData(){ try { return window.Telegram?.WebApp?.initData || ''; } catch { return ''; } }
+function headers(){ return { 'Content-Type':'application/json', 'x-telegram-init-data': initData() }; }
+function fmtMinor(a,c){ try { return new Intl.NumberFormat(undefined,{style:'currency',currency:c}).format(a/100) } catch { return (a/100)+' '+c } }
+
+async function api(method, url, body){
+  const r = await fetch(url, { method, headers: headers(), body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json().catch(()=>({}));
+  if (!r.ok) throw new Error(j.error || r.statusText || 'Request failed');
+  return j;
+}
+
+document.getElementById('btnCreate').onclick = async ()=>{
+  const payload = {
+    sku: document.getElementById('sku').value.trim(),
+    title: document.getElementById('title').value.trim(),
+    description: document.getElementById('description').value.trim(),
+    price: Number(document.getElementById('price').value),
+    currency: (document.getElementById('currency').value.trim() || 'USD').toUpperCase(),
+    image_url: document.getElementById('image_url').value.trim(),
+    is_active: true
+  };
+  const msg = document.getElementById('createMsg');
+  msg.textContent = '...'; msg.className = '';
+  try{
+    const res = await api('POST','/api/products', payload);
+    msg.textContent = 'OK: создан продукт id=' + res.id;
+    msg.className = 'ok';
+    document.getElementById('pid').value = res.id;
+  }catch(e){
+    msg.textContent = 'Ошибка: ' + e.message;
+    msg.className = 'err';
+  }
+};
+
+document.getElementById('btnKeys').onclick = async ()=>{
+  const pid = Number(document.getElementById('pid').value);
+  const keysText = document.getElementById('keys').value;
+  const keys = keysText.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  const msg = document.getElementById('keysMsg');
+  msg.textContent = '...'; msg.className='';
+  try{
+    const res = await api('POST','/api/products/'+pid+'/keys', { keys });
+    msg.textContent = 'OK: добавлено ключей — ' + res.added;
+    msg.className = 'ok';
+    // после загрузки — обновим список, чтобы увидеть новый остаток
+    loadProducts();
+  }catch(e){
+    msg.textContent = 'Ошибка: ' + e.message;
+    msg.className = 'err';
+  }
+};
+
+document.getElementById('btnLoad').onclick = () => loadProducts();
+
+async function loadProducts(){
+  const q = document.getElementById('q').value.trim();
+  const url = new URL('/api/admin/products', location.origin);
+  if (q) url.searchParams.set('search', q);
+
+  const tbody = document.getElementById('tbl');
+  tbody.innerHTML = '<tr><td colspan="6">Загрузка...</td></tr>';
+  try{
+    const data = await api('GET', url, null);
+    tbody.innerHTML = '';
+    (data.items || []).forEach(p=>{
+      const stock = Number(p.stock_remaining || 0);
+      const badgeClass = stock === 0 ? 'stock-out' : (stock <= 5 ? 'stock-low' : 'stock-ok');
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${p.id}</td>
+        <td>${p.sku}</td>
+        <td>${p.title}</td>
+        <td>${p.price}</td>
+        <td>${p.currency}</td>
+        <td><span class="stock-badge ${badgeClass}">${stock}</span></td>
+      `;
+      tbody.appendChild(tr);
+    });
+    if (!data.items || data.items.length === 0){
+      tbody.innerHTML = '<tr><td colspan="6" class="dim">Ничего не найдено</td></tr>';
+    }
+  }catch(e){
+    tbody.innerHTML = '<tr><td colspan="6" class="err">Ошибка: '+e.message+'</td></tr>';
+  }
+}
+
+// авто-подгрузка при открытии
+loadProducts();
+</script>
+</body>
+</html>
