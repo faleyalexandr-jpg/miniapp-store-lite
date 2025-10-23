@@ -1,199 +1,135 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Магазин XBOX ключей — LITE</title>
-  <style>
-    :root {
-      --bg: var(--tg-theme-bg-color, #ffffff);
-      --text: var(--tg-theme-text-color, #111111);
-      --muted: var(--tg-theme-hint-color, #666666);
-      --border: var(--tg-theme-secondary-bg-color, #eaeaea);
-      --btn-bg: var(--tg-theme-button-color, #0088cc);
-      --btn-text: var(--tg-theme-button-text-color, #ffffff);
-      --btn-bg-hover: color-mix(in srgb, var(--btn-bg) 80%, white);
-    }
-
-    body {
-      font-family: system-ui, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      margin: 0;
-      padding: 16px;
-    }
-
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-      gap: 12px;
-    }
-
-    .card {
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 14px;
-      background: var(--tg-theme-secondary-bg-color, #fff);
-      color: var(--text);
-      box-shadow: 0 2px 4px rgba(0,0,0,0.06);
-      transition: transform .1s ease, box-shadow .2s ease;
-    }
-
-    .card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 10px rgba(0,0,0,0.08);
-    }
-
-    .img {
-      width: 100%;
-      border-radius: 10px;
-      background: #f6f6f6;
-      aspect-ratio: 4/3;
-      object-fit: cover;
-    }
-
-    .row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    input, select {
-      padding: 8px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      font-size: 15px;
-    }
-
-    button {
-      cursor: pointer;
-      border: none;
-      border-radius: 10px;
-      padding: 10px 16px;
-      background: var(--btn-bg);
-      color: var(--btn-text);
-      font-weight: 600;
-      font-size: 15px;
-      transition: all .2s ease;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.15);
-    }
-
-    button:hover {
-      background: var(--btn-bg-hover);
-      transform: translateY(-1px);
-      box-shadow: 0 3px 6px rgba(0,0,0,0.2);
-    }
-
-    button:active {
-      transform: translateY(1px);
-      box-shadow: 0 1px 2px rgba(0,0,0,0.2) inset;
-    }
-
-    @media (max-width: 420px) {
-      body { padding: 12px; }
-      .card { padding: 12px; }
-      input, button, select { font-size: 16px; }
-    }
-  </style>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BuddaPlay Shop</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+body{
+  font-family: system-ui,sans-serif;
+  background: #f7f8fa;
+  margin: 0;
+  padding: 0;
+}
+header{
+  padding: 16px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 20px;
+  background: #fff;
+  box-shadow: 0 2px 4px rgba(0,0,0,.05);
+  position: sticky; top: 0; z-index: 10;
+}
+main{padding: 16px;}
+input{
+  width: 100%;
+  padding: 10px;
+  font-size: 16px;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  margin-bottom: 16px;
+}
+.grid{
+  display: grid;
+  grid-template-columns: repeat(auto-fill,minmax(160px,1fr));
+  gap: 16px;
+}
+.card{
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 2px 5px rgba(0,0,0,.05);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: all .2s ease;
+}
+.card:hover{transform: translateY(-2px);}
+.card img{width:100%;aspect-ratio:4/3;object-fit:cover;}
+.card-content{padding:10px;flex-grow:1;}
+.card h3{margin:0;font-size:16px;line-height:1.3;}
+.card p{font-size:13px;color:#666;margin:6px 0;}
+.price{font-weight:700;margin-top:auto;}
+button.buy{
+  background:#0088cc;
+  color:#fff;
+  border:none;
+  padding:10px 14px;
+  width:100%;
+  border-radius:10px;
+  font-size:15px;
+  cursor:pointer;
+  transition:background .2s ease;
+}
+button.buy:hover{background:#0078b5;}
+.loading{text-align:center;padding:40px;font-size:16px;color:#888;}
+.empty{text-align:center;color:#999;padding:40px;}
+</style>
 </head>
 <body>
-  <h2>Магазин XBOX ключей — LITE</h2>
+<header>🎮 BuddaPlay</header>
+<main>
+  <input id="search" placeholder="Поиск по названию..." />
+  <div id="grid" class="grid"></div>
+  <div id="status" class="loading">Загрузка товаров...</div>
+</main>
 
-  <div class="row" style="gap:12px; flex-wrap:wrap">
-    <input id="q" placeholder="Поиск..." style="flex:1; min-width:220px">
-    <select id="provider">
-      <option value="test">Тест (dev)</option>
-      <option value="yookassa">YooKassa</option>
-      <option value="nowpayments">NOWPayments</option>
-    </select>
-  </div>
+<script>
+const tg = window.Telegram?.WebApp;
+tg?.ready();
 
-  <div id="list" class="grid" style="margin-top:12px"></div>
+async function loadProducts(q=''){
+  document.getElementById('status').textContent='Загрузка...';
+  const res = await fetch('/api/products?search='+encodeURIComponent(q));
+  const data = await res.json();
+  const grid = document.getElementById('grid');
+  grid.innerHTML='';
+  if(!data.items?.length){
+    document.getElementById('status').innerHTML='<div class="empty">Нет товаров</div>';
+    return;
+  }
+  document.getElementById('status').textContent='';
+  data.items.forEach(p=>{
+    const card=document.createElement('div');
+    card.className='card';
+    card.innerHTML=`
+      <img src="${p.image_url||'https://placehold.co/300x200'}" alt="">
+      <div class="card-content">
+        <h3>${p.title}</h3>
+        <p>${p.description||''}</p>
+        <div class="price">${(p.price/100).toFixed(2)} ${p.currency}</div>
+      </div>
+      <button class="buy">Купить</button>
+    `;
+    card.querySelector('button').onclick=()=>buyProduct(p.id);
+    grid.appendChild(card);
+  });
+}
 
-  <h3 style="margin-top:24px">Мои заказы</h3>
-  <ul id="orders"></ul>
+async function buyProduct(productId){
+  try{
+    const r=await fetch('/api/checkout',{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'x-telegram-init-data':tg?.initData||''
+      },
+      body:JSON.stringify({productId,provider:'test'})
+    });
+    const j=await r.json();
+    if(!r.ok) throw new Error(j.error||r.statusText);
+    tg?.openLink(j.redirectUrl);
+  }catch(e){
+    alert('Ошибка: '+e.message);
+  }
+}
 
-  <script>
-    const API = '';
+document.getElementById('search').oninput=(e)=>{
+  const q=e.target.value.trim();
+  loadProducts(q);
+};
 
-    function initData() {
-      try { return window.Telegram?.WebApp?.initData || ''; } 
-      catch { return ''; }
-    }
-
-    function fmt(a, c) {
-      try {
-        return new Intl.NumberFormat(undefined, {style:'currency', currency:c}).format(a/100);
-      } catch {
-        return (a/100) + ' ' + c;
-      }
-    }
-
-    async function loadProducts(q='') {
-      const u = new URL('/api/products', location.origin);
-      if (q) u.searchParams.set('search', q);
-      const r = await fetch(u, { headers: {'x-telegram-init-data': initData()} });
-      return r.json();
-    }
-
-    async function loadOrders() {
-      const r = await fetch('/api/my/orders', { headers: {'x-telegram-init-data': initData()} });
-      return r.json();
-    }
-
-    async function buy(id) {
-      const provider = document.getElementById('provider').value;
-      const r = await fetch('/api/checkout', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json','x-telegram-init-data':initData()},
-        body: JSON.stringify({ productId:id, provider })
-      });
-      const j = await r.json();
-      if (j.redirectUrl) location.href = j.redirectUrl;
-    }
-
-    async function render() {
-      const q = document.getElementById('q').value.trim();
-      const data = await loadProducts(q);
-      const list = document.getElementById('list');
-      list.innerHTML = '';
-
-      data.items.forEach(p => {
-        const d = document.createElement('div');
-        d.className = 'card';
-        d.innerHTML = `
-          <img class="img" src="${p.image_url || 'https://placehold.co/400x300'}">
-          <div style="font-weight:600; margin-top:8px; line-height:1.25; color: var(--tg-theme-text-color, #111);">
-            ${p.title}
-          </div>
-          <div style="font-size:13px; line-height:1.4; opacity:.9; min-height:32px; 
-                      overflow-wrap:anywhere; word-break:break-word; 
-                      color: var(--muted); margin-top:2px;">
-            ${p.description || ''}
-          </div>
-          <div class="row" style="margin-top:10px">
-            <div style="font-weight:600;">${fmt(p.price, p.currency)}</div>
-            <button data-id="${p.id}">Купить</button>
-          </div>`;
-        d.querySelector('button').onclick = () => buy(p.id);
-        list.appendChild(d);
-      });
-
-      try {
-        const ord = await loadOrders();
-        const ul = document.getElementById('orders');
-        ul.innerHTML = '';
-        (ord.items || []).forEach(o => {
-          const li = document.createElement('li');
-          li.textContent = `#${o.id} — ${o.status}` + (o.delivered_key ? ` — ключ: ${o.delivered_key}` : '');
-          ul.appendChild(li);
-        });
-      } catch {}
-    }
-
-    document.getElementById('q').addEventListener('input', () => render());
-    render();
-  </script>
+loadProducts();
+</script>
 </body>
 </html>
