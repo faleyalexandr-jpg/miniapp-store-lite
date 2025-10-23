@@ -37,6 +37,12 @@ function ensureSchema() {
     image_url TEXT,
     is_active INTEGER NOT NULL DEFAULT 1
   );
+
+  // добавочные поля (тихо игнорируем ошибку, если уже есть)
+try { db.exec(`ALTER TABLE products ADD COLUMN category TEXT`); } catch {}
+try { db.exec(`ALTER TABLE products ADD COLUMN tags TEXT`); } catch {}
+try { db.exec(`ALTER TABLE products ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1`); } catch {}
+
   CREATE TABLE IF NOT EXISTS keys (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     product_id INTEGER NOT NULL,
@@ -127,11 +133,25 @@ app.get('/api/products', (req,res)=>{
   res.json({ items, total, page, pages: Math.max(1, Math.ceil(total/limit)) });
 });
 app.post('/api/products', auth, adminOnly, (req,res)=>{
-  const { sku, title, description, price, currency, image_url, is_active } = req.body;
-  const info = db.prepare(`INSERT INTO products (sku,title,description,price,currency,image_url,is_active) VALUES (?,?,?,?,?,?,?)`)
-    .run(sku, title, description||'', price, (currency||'USD').toUpperCase(), image_url||'', is_active?1:1);
+  const {
+    sku, title, description,
+    price, currency, image_url,
+    is_active, category, tags
+  } = req.body;
+
+  const info = db.prepare(`
+    INSERT INTO products (sku,title,description,price,currency,image_url,is_active,category,tags)
+    VALUES (?,?,?,?,?,?,?,?,?)
+  `).run(
+    sku, title, description||'',
+    Number(price)||0, (currency||'USD').toUpperCase(),
+    image_url||'', is_active?1:0,
+    category||'', (Array.isArray(tags)?tags.join(','): (tags||''))
+  );
+
   res.json({ id: Number(info.lastInsertRowid) });
 });
+
 app.post('/api/products/:id/keys', auth, adminOnly, (req,res)=>{
   const pid = parseInt(req.params.id,10);
   const keys = Array.isArray(req.body?.keys) ? req.body.keys : [];
@@ -139,6 +159,25 @@ app.post('/api/products/:id/keys', auth, adminOnly, (req,res)=>{
   const tx = db.transaction(arr => { for (const k of arr) insert.run(pid, String(k).trim()); });
   tx(keys);
   res.json({ added: keys.length });
+});
+
+// Дублировать продукт по ID
+app.post('/api/products/:id/duplicate', auth, adminOnly, (req,res)=>{
+  const id = parseInt(req.params.id,10);
+  const row = db.prepare(`SELECT * FROM products WHERE id=?`).get(id);
+  if (!row) return res.status(404).json({ error:'Product not found' });
+
+  // новая SKU (добавим суффикс -COPY + timestamp)
+  const newSku = `${row.sku}-COPY-${Date.now().toString().slice(-5)}`;
+
+  const info = db.prepare(`
+    INSERT INTO products (sku,title,description,price,currency,image_url,is_active,category,tags)
+    VALUES (?,?,?,?,?,?,?,?,?)
+  `).run(
+    newSku, row.title, row.description, row.price, row.currency,
+    row.image_url, row.is_active, row.category, row.tags
+  );
+  res.json({ id: Number(info.lastInsertRowid), sku: newSku });
 });
 
 // Список товаров для админки с остатками ключей
@@ -239,6 +278,27 @@ app.get('/api/orders/:id', auth, (req, res) => {
   });
 });
 
+// Массовое создание продуктов
+app.post('/api/admin/products/bulk', auth, adminOnly, (req,res)=>{
+  const items = Array.isArray(req.body?.items) ? req.body.items : [];
+  const insert = db.prepare(`
+    INSERT INTO products (sku,title,description,price,currency,image_url,is_active,category,tags)
+    VALUES (?,?,?,?,?,?,?,?,?)
+  `);
+  const tx = db.transaction(arr=>{
+    for (const p of arr) {
+      insert.run(
+        p.sku, p.title, p.description||'',
+        Number(p.price)||0, (p.currency||'USD').toUpperCase(),
+        p.image_url||'', p.is_active?1:0,
+        p.category||'', (Array.isArray(p.tags)?p.tags.join(','): (p.tags||''))
+      );
+    }
+  });
+  tx(items);
+  res.json({ inserted: items.length });
+});
+
 app.post('/api/webhooks/yookassa', express.json(), async (req,res)=>{
   try{
     const ev = req.body;
@@ -298,4 +358,5 @@ async function deliverKey(orderId){
 app.get('*', (req,res)=>{ res.sendFile(path.join(__dirname, 'public', 'index.html')); });
 
 ensureSchema();
+
 app.listen(PORT, ()=>console.log('LITE API on', PORT));
